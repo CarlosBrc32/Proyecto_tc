@@ -13,9 +13,31 @@ def get_date():
     else:
         date = yesterday
 
-    return date.strftime('%-d/%-m/%-Y')
+    return date
 
-def get_quotes():
-    url : 'https://serviciosweb.afip.gob.ar/aduana/cotizacionesMaria/default.asp'
+def get_quotes(date):
+    url = 'https://serviciosweb.afip.gob.ar/aduana/cotizacionesMaria/default.asp'
 
-    pass
+    payload = {
+        'dia': date.strftime('%d'),
+        'mes': date.strftime('%m'),
+        'anio': date.strftime('%Y'),
+        'consultarConstancia.x': 47,
+        'consultarConstancia.y': 17
+    }
+
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    session = requests.Session()
+    resp = session.post(url, data=payload, headers=headers)
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    tablas = soup.find_all('table', class_='contenido')
+    quotes = {}
+    df = pd.DataFrame(tablas)
+
+    return df
+
+
+date = get_date()
+
+
+print(get_quotes(date))
