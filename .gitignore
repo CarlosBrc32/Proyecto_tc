@@ -1,2 +1,47 @@
+# Entornos virtuales
 env/
 env_win/
+venv/
+.venv/
+
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos de log
+*.log
+
+# Archivos temporales
+*.tmp
+*.swp
+*.swo
+
+# Configuración de VS Code
+.vscode/
+
+# Archivos de Jupyter Notebook
+.ipynb_checkpoints/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Dependencias empaquetadas
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+*.manifest
+*.spec
+
+# Pipenv y Poetry
+Pipfile.lock
+poetry.lock
+
+# Otros archivos generados
+*.bak
+*.old
+*.orig
