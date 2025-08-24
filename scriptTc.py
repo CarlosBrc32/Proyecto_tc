@@ -238,7 +238,7 @@ def all_scrap():
             scrap_infodolar()
             ]
 
-def main ():
+def main():
 
     file_path = "data/historical_quotes.xlsx"
     new_data = pd.DataFrame(all_scrap())
