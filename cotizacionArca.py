@@ -4,8 +4,28 @@ from datetime import datetime, timedelta
 import pandas as pd
 import tkinter as tk
 from tkinter import messagebox
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+session = requests.Session()
+retries = Retry(total=3, backoff_factor=0.5, status_forcelist=[500, 502, 503, 504 ])
+session.mount('https:/', HTTPAdapter(max_retries=retries))
 
 csv_path = 'PLANILLA-CARGA-MONEDAS.csv'
+
+today = datetime.today()
+today_format = today.strftime('%d/%m/%Y')
+
+def scrap_table(url, name_table=None):
+    response = session.get(url)
+    soup = BeautifulSoup(response.content, 'lxml')
+
+    if name_table:
+        table = soup.find('table', class_= name_table)
+    else:
+        table = soup.find('table')
+
+    return table
 
 def centrar_ventana(ventana, ancho=400, alto=250):
     pantalla_ancho = ventana.winfo_screenwidth()
@@ -45,7 +65,13 @@ def get_date():
     root.title("Ingresar Fecha")
     root.resizable(False, False)
 
-    centrar_ventana(root, 300, 200)
+    #Checkbox
+    weekend = tk.BooleanVar()
+
+    check = tk.Checkbutton(root, text='Fin de semana/Feriado', variable=weekend)
+    check.grid(row=1, column=3,padx=10, pady=10)
+
+    centrar_ventana(root, 400, 200)
 
     resultado = tk.StringVar()
 
@@ -65,14 +91,14 @@ def get_date():
     root.bind("<Return>", lambda e: confirm())
     root.bind("<Escape>", lambda e: cancel())
 
-    tk.Button(root, text="Aceptar", command=confirm).grid(row=4, column=4, padx=5, pady=10)
-    tk.Button(root, text="Cancelar", command=cancel).grid(row=4, column=5, padx=5, pady=10)
+    tk.Button(root, text="Aceptar", command=confirm).grid(row=4, column=1, padx=5, pady=10)
+    tk.Button(root, text="Cancelar", command=cancel).grid(row=4, column=2, padx=5, pady=10)
 
     root.mainloop()
 
-    return resultado.get() if resultado.get() else None
+    return weekend.get(), resultado.get() if resultado.get() else None
 
-def get_quotes_arca(date):
+def get_quotes_arca(date,today_format):
 
     url = 'https://serviciosweb.afip.gob.ar/aduana/cotizacionesMaria/formulario.asp'
 
@@ -120,7 +146,7 @@ def get_quotes_arca(date):
         for key, value in monedas_filtrar.items():
             if value in nombre_moneda:
                 moneda = key   # guarda la clave en vez del texto
-                fecha = columnas[1].get_text(strip=True)
+                fecha = today_format
                 vendedor = columnas[2].get_text(strip=True).replace('.', ',')  # VENDEDOR
                 datos.append([moneda, 0, vendedor, fecha, 'A'])
 
@@ -128,7 +154,7 @@ def get_quotes_arca(date):
         for key, value in monedas_comprador.items():
             if value in nombre_moneda:
                 moneda = key   # guarda la clave en vez del texto
-                fecha = columnas[1].get_text(strip=True)
+                fecha = today_format
                 comprador = columnas[3].get_text(strip=True).replace('.', ',')  # COMPRADOR
                 datos.append([moneda, 0, comprador, fecha, 'A'])
 
@@ -137,14 +163,85 @@ def get_quotes_arca(date):
 
     if df.empty:
         messagebox.showerror('ERROR',"No encontré la tabla de cotizaciones, puede que no haya datos para la fecha.")
+        
+    return datos
 
-    return df
+def get_quotes_bna(today_format):
+
+        try:   
+            table =  scrap_table('https://www.bna.com.ar/Personas','table cotizacion' )
+
+            rows = table.find_all('tr')
+
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) > 0 and "Real" in cells[0].text:
+                    comprador = cells[1].text.strip()[:3]
+                    vendedor  = cells[2].text.strip()[:3]
+            
+            datos = [['11',0,vendedor,today_format,'A'],['12',0,comprador,today_format,'A']]        
+    
+            return datos
+        
+        except AttributeError:
+            messagebox.showerror('ERROR',"No encontré la tabla de cotizaciones del BNA.")
+        except requests.exceptions.RequestException as e:
+            messagebox.showerror('Error', f'{e}')
+
+def get_quotes_oanda(date,today_format):
+
+    url = "https://fxds-hcc.oanda.com/api/data/update/"
+
+    base_currencies = ['DZD', 'EGP', 'INR']
+    quote_currency = 'ARS'
+
+    day, month, year = date.split('/')
+    end_day, end_month, end_year = today_format.split('/')
+
+    end_date = f'{end_year}-{end_month}-{end_day}'#HOY
+    start_date = f'{year}-{month}-{day}'#FECHA PEDIDA
+
+    params = {
+    "source": "OANDA",
+    "adjustment": "0",
+    "period": "daily",
+    "price": "bid",
+    "view": "graph",
+    "quote_currency_0": quote_currency
+}
+    
+    data = []
+    for base in base_currencies:
+        try:
+            params['base_currency'] = base
+            params['start_date'] = start_date
+            params['end_date'] = end_date
+
+            r = requests.get(url, params=params, timeout=10)
+            r.raise_for_status()
+
+            quotes = r.json()
+            
+        except Exception as e:
+            messagebox.showerror('Error', f'{e}')
+
+    return data
+
 
 def main_function():
-    day = get_date()
-    print(day)
-    quotes = get_quotes_arca(day)
-    print(quotes)
+    weekend, day = get_date()
+    print(day, weekend)
+
+    arca = get_quotes_arca(day,today_format)
+    bna = get_quotes_bna(today_format)
+
+    print(get_quotes_oanda(day, today_format))
+
+    all_tc = arca + bna
+
+    df = pd.DataFrame(all_tc,columns=['U.M', '0', 'TC', 'FECHA','A'])
+    df.to_csv(csv_path, sep=';', index=False, header=False)
+
     messagebox.showinfo('Complete',f'Contizaciones extraidas exitosamente de la fecha {day}')
 
 if __name__ == '__main__':
